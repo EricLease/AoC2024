@@ -1,7 +1,8 @@
-﻿using System.Drawing;
+﻿/*
+using System.Drawing;
+using System.Text;
 
 // Solution: 1831
-/*
    TLDR:
    TODO: clean up algorithm implementation
    1. Find the unobstructed path
@@ -44,7 +45,6 @@
    in a few steps if you know the path and obstructions.  They are basically different
    identity matrices at that point.  There are probably transforms you can apply to
    determine if there are... not sure how you would do it.
-*/
 const string _puzzleInput =
     """
     .....................#................#...#.....#.................................................#...........#...................
@@ -332,115 +332,31 @@ const string _puzzleInput =
     So chaining those together you might be able to create masks that could overlap to
     find non-unique (crossover points between masks) in an additive fashion, keeping
     the execution complexity sub O(n^2).
-*/
+*//*
 
-/* Expect 6
-//const string _puzzleInput =
-//    """
-//    ....#.....
-//    .........#
-//    ..........
-//    ..#.......
-//    .......#..
-//    ..........
-//    .#..^.....
-//    ........#.
-//    #.........
-//    ......#...
-//    """;
-*/
+// Expect 6
+const string _debugPuzzleInput =
+    """
+    ....#.....
+    .........#
+    ..........
+    ..#.......
+    .......#..
+    ..........
+    .#..^.....
+    ........#.
+    #.........
+    ......#...
+    """;
 
-#region Main
-static MapData? DoWork(MapData? data = null)
-{
-    var firstPass = data == null;
-    var mapData = data ?? ParseInput();
-    var guard = mapData.Guard;
-
-    while (mapData.IsPositionValid(guard.CurrentStep!.Value.Position))
-    {
-        if (firstPass) Console.Write('.');
-
-        if (mapData.LoopPresent)
-        {
-            if (firstPass) throw new Exception(
-                "Malformed input, duplicate step encountered on first pass.");
-
-            return mapData;
-        }
-
-        var testStep = guard.NextStep;
-        var directionsTested = 0;
-
-        do
-        {
-            if (!mapData.Obstructions.Contains(testStep.Position)) break;
-
-            guard.ChangeDirection();
-            testStep = guard.NextStep;
-            directionsTested++;
-        } while (directionsTested < MaxDirectionalChanges);
-
-        // Test obstruction at testStep
-        if (firstPass &&
-            directionsTested < MaxDirectionalChanges &&
-            mapData.IsPositionValid(testStep.Position) &&
-            testStep.Position != guard.StartingStep!.Value.Position &&
-            !mapData.DistinctPositions.Contains(testStep.Position))
-        {
-            var testGuard = new Guard(mapData.Guard.Steps);
-
-            testGuard.ChangeDirection();
-
-            var testMapData = new MapData(
-                mapData.Width, mapData.Height,
-                [.. mapData.Obstructions, testStep.Position],
-                testGuard);
-            var found = DoWork(testMapData);
-
-            if (found != null) mapData.InterferencePoints.Add(testStep.Position);
-        }
-
-        mapData.RecordStep(testStep, true);
-    }
-
-    if (firstPass) mapData.Back();
-    else Console.Write('.');
-
-    return firstPass ? mapData : null;
-}
-
-static void ShowResults()
-{
-    Console.Clear();
-    Console.Write("Working");
-
-    var mapData = DoWork() ?? throw new Exception("Malformed input.");
-
-    PrintMap(mapData);
-    Console.WriteLine("\n-------------------------- Final Render --------------------------");
-    Console.WriteLine($"Total Steps: {mapData.AllPositions.Count}");
-    Console.WriteLine($"Distinct Steps: {mapData.DistinctSteps.Count}");
-    Console.WriteLine($"Repeated Steps: {mapData.AllSteps.Count - mapData.DistinctSteps.Count}");
-    Console.WriteLine($"Distinct Positions: {mapData.DistinctPositions.Count}");
-    Console.WriteLine($"Repeated Positions: {mapData.AllPositions.Count - mapData.DistinctPositions.Count}");
-    Console.WriteLine("------------------------------------------------------------------");
-    Console.WriteLine($"Possible Obstruction Positions (that would create loops): {mapData.InterferencePoints.Count}");
-}
-
-ShowResults();
-#endregion Main
-
-#region Utils
-
-static List<string> GetLines()
-    => [..(_puzzleInput).Split(
+static List<string> GetLines(bool debug = false)
+    => [..(debug ? _debugPuzzleInput : _puzzleInput).Split(
         Environment.NewLine,
         StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
 
-static MapData ParseInput()
+static MapData ParseInput(bool debug = false)
 {
-    var lines = GetLines();
+    var lines = GetLines(debug);
     var height = lines.Count;
     var width = lines[0].Length;
     var obstructions = new HashSet<Point>();
@@ -457,25 +373,25 @@ static MapData ParseInput()
 
             switch (line[col])
             {
-                case ObstructionIcon:
+                case '#':
                     obstructions.Add(new(col, row));
                     break;
 
-                case GuardUpIcon:
+                case '^':
                     isStart = true;
                     break;
 
-                case GuardRightIcon:
+                case '>':
                     isStart = true;
                     startDirection = MapDirection.Right;
                     break;
 
-                case GuardDownIcon:
+                case 'v':
                     isStart = true;
                     startDirection = MapDirection.Down;
                     break;
 
-                case GuardLeftIcon:
+                case '<':
                     isStart = true;
                     startDirection = MapDirection.Left;
                     break;
@@ -492,7 +408,294 @@ static MapData ParseInput()
         new Guard(new Step(startPosition, startDirection)));
 }
 
-#endregion Utils
+static bool PositionValid(MapData map, Point position)
+    => position.X >= 0 && position.Y >= 0
+    && position.X < map.Width && position.Y < map.Height;
+
+static Step AboutFace(Step step) => step.ChangeDirection().ChangeDirection();
+
+static Step Rewind(Step step) => AboutFace(AboutFace(step).Next);
+
+static void PrintMap(
+    MapData data, int secondPassOffset = -1, bool full = false,
+    bool debug = false, bool debugPause = false, bool trace = true)
+{
+    if (!trace && secondPassOffset > -1) return;
+    if (!full && data.AllSteps[^1].IsVertical) return;
+    if (!full && trace &&
+        data.AllSteps.Count > 1 &&
+        data.AllSteps[^1].Direction != data.AllSteps[^2].Direction) Console.Clear();
+
+    const int PortionSize = 25;
+
+    Console.CursorVisible = false;
+    DefaultBgColor = Console.ForegroundColor;
+
+    var origFgColor = DefaultBgColor;
+    var origBgColor = Console.BackgroundColor;
+    var guard = data.Guard;
+    var minRow = full ? 0 : Math.Max(0, guard.CurrentStep!.Value.Position.Y - PortionSize);
+    var maxRow = full
+        ? data.Height - 1
+        : Math.Min(data.Height - 1, PortionSize + Math.Max(PortionSize, guard.CurrentStep!.Value.Position.Y));
+    var printInstructions = new List<PrintInstruction>(
+        data.Obstructions
+            .Where(o => o.Y >= minRow && o.Y <= maxRow)
+            .Select(o => new PrintInstruction(
+                o, ObstructionIcon, ObstructionFgColor, ObstructionBgColor)));
+    var isSecondPass = false;
+    Step currStep;
+
+    for (var i = 0; i < guard.Steps.Count; i++)
+    {
+        isSecondPass = secondPassOffset > -1 && i >= secondPassOffset;
+
+        currStep = guard.Steps[i];
+
+        var isStart = currStep == guard.StartingStep;
+
+        if (data.InterferencePoints.Contains(currStep.Position))
+        {
+            printInstructions.Add(new(currStep.Position,
+                PossibleObstructionIcon, PossibleObstructionFgColor,
+                isStart
+                    ? isSecondPass ? SecondPassStartBgColor : StartBgColor
+                    : isSecondPass ? PossibleObstructionSecondPassBgColor : PossibleObstructionBgColor));
+            continue;
+        }
+
+        var repeated = guard.Steps.Take(i).Where(s => s.Position == currStep.Position).ToList();
+        var currDirectionIndex = (int)currStep.Direction % 2;
+
+        if (repeated.Count == 0)
+        {
+            printInstructions.Add(new(currStep.Position,
+                VisitedLocationIcons[currDirectionIndex],
+                isSecondPass ? VisitedLocationSecondPassFgColor : VisitedLocationFgColor,
+                isStart
+                    ? isSecondPass ? SecondPassStartBgColor : StartBgColor
+                    : isSecondPass ? VisitedLocationSecondPassBgColor : VisitedLocationBgColor));
+            continue;
+        }
+
+        if (!debug && !isSecondPass)
+            printInstructions.RemoveAll(pi => pi.Position == currStep.Position);
+
+        printInstructions.Add(new(currStep.Position,
+            VisitedLocationIcons[repeated.Any(
+                r => (int)r.Direction % 2 != currDirectionIndex) ? 2 : currDirectionIndex],
+            isStart
+                ? isSecondPass ? SecondPassStartFgColor : StartFgColor
+                : isSecondPass ? VisitedLocationSecondPassFgColor : VisitedLocationFgColor,
+            isStart
+                ? isSecondPass ? SecondPassStartBgColor : StartBgColor
+                : isSecondPass ? RepeatedLocationSecondPassBgColor : RepeatedLocationBgColor));
+    }
+
+    currStep = guard.CurrentStep!.Value;
+
+    var inBounds =
+        currStep.Position.X >= 0 && currStep.Position.X < data.Width &&
+        currStep.Position.Y >= 0 && currStep.Position.Y < data.Height;
+    ConsoleColor guardFore, guardBack;
+
+    if (data.InterferencePoints.Contains(currStep.Position))
+    {
+        guardFore = inBounds
+            ? isSecondPass ? GuardSecondPassFgColor : GuardFgColor
+            : isSecondPass ? GuardSecondPassFgColorCompleted : GuardFgColorCompleted;
+        guardBack = isSecondPass ? PossibleObstructionSecondPassBgColor : PossibleObstructionBgColor;
+    }
+    else if (!inBounds)
+    {
+        currStep = Rewind(currStep);
+
+        var rewoundToPossibleObstructionPosition = data.InterferencePoints.Contains(currStep.Position);
+
+        guardFore = isSecondPass
+            ? rewoundToPossibleObstructionPosition ? GuardObstructionSecondPassFgColorCompleted : GuardSecondPassFgColorCompleted
+            : rewoundToPossibleObstructionPosition ? GuardObstructionBgColorCompleted : GuardFgColorCompleted;
+        guardBack = isSecondPass
+            ? rewoundToPossibleObstructionPosition ? GuardObstructionSecondPassBgColorCompleted : GuardSecondPassBgColorCompleted
+            : rewoundToPossibleObstructionPosition ? GuardObstructionBgColorCompleted : GuardBgColorCompleted;
+    }
+    else
+    {
+        guardFore = isSecondPass ? GuardSecondPassFgColor : GuardFgColor;
+        guardBack = isSecondPass ? GuardSecondPassBgColor : GuardBgColor;
+    }
+
+    if (!debug && !isSecondPass)
+        printInstructions.RemoveAll(pi => pi.Position == currStep.Position);
+
+    printInstructions.Add(new(
+        currStep.Position, GuardIcons[(int)currStep.Direction], guardFore, guardBack));
+
+    for (var row = -1; row < data.Height + 1; row++)
+    {
+        var rowShouldPrint = row == -1 || row == data.Height;
+
+        for (var col = -1; col < data.Width + 1; col++)
+        {
+            if (!rowShouldPrint && col > -1 && col < data.Width) continue;
+
+            printInstructions.Add(new(new(row, col), BorderIcon,
+                isSecondPass ? BorderSecondPassFgColor : BorderFgColor,
+                isSecondPass ? BorderSecondPassBgColor : BorderBgColor));
+        }
+    }
+
+    // TODO: Double buffer
+    var orderedInstructions = printInstructions
+        .OrderBy(pi => pi.Position.Y)
+        .ThenBy(pi => pi.Position.X)
+        .SkipWhile(pi => pi.Position.Y < minRow - 1)
+        .TakeWhile(pi => pi.Position.Y <= maxRow + 1)
+        .ToList();
+
+    if (full ||
+        data.Height > PortionSize * 2 &&
+         guard.PreviousStep.HasValue &&
+         guard.PreviousStep.Value.Position.Y !=
+            guard.CurrentStep.Value.Position.Y) Console.Clear();
+
+    foreach (var instruction in orderedInstructions)
+    {
+        Console.BackgroundColor = instruction.BackColor;
+        Console.ForegroundColor = instruction.ForeColor;
+        Console.CursorLeft = instruction.Position.X + 1;
+        Console.CursorTop = instruction.Position.Y - minRow + 1;
+        Console.Write(instruction.Value);
+    }
+
+    Console.BackgroundColor = origBgColor;
+    Console.ForegroundColor = origFgColor;
+    Console.CursorVisible = true;
+
+    if (debug && (PauseRequested || debugPause))
+        while (!ContinueRequested) Thread.Sleep(20);
+}
+
+static void DebugDisplay(bool debug, MapData data, int secondPassOfset = -1, bool trace = true)
+{
+    if (!debug) { return; }
+
+    PrintMap(data, secondPassOfset, full: false, debug: true, trace: trace);
+}
+
+static MapData? DoWork(
+    MapData? data = null, int secondPassOffset = -1,
+    bool debug = false, bool debugPause = false, bool debugData = false,
+    bool trace = true)
+{
+    var firstPass = data == null;
+    var mapData = data ?? ParseInput(debugData);
+    var guard = mapData.Guard;
+
+    Console.BackgroundColor = ConsoleColor.Black;
+
+    while (PositionValid(mapData, guard.CurrentStep!.Value.Position))
+    {
+        if (firstPass)
+        {
+            secondPassOffset = -1;
+
+            if (debug && !debugPause && trace) Console.Clear();
+        }
+
+        if (mapData.LoopPresent)
+        {
+            if (firstPass)
+            {
+                throw new Exception("Malformed input, duplicate step encountered on first pass.");
+            }
+
+            return mapData;
+        }
+
+        var testStep = guard.NextStep;
+
+        DebugDisplay(debug && (firstPass || trace), mapData, secondPassOffset, trace);
+
+        var directionsTested = 0;
+
+        do
+        {
+            if (!mapData.Obstructions.Contains(testStep.Position)) break;
+
+            guard.ChangeDirection();
+            testStep = guard.NextStep;
+            directionsTested++;
+        } while (directionsTested < MaxDirectionalChanges);
+
+        // Test obstruction at testStep
+        if (firstPass &&
+            directionsTested < MaxDirectionalChanges &&
+            PositionValid(mapData, testStep.Position) &&
+            testStep.Position != guard.StartingStep!.Value.Position &&
+            !mapData.DistinctPositions.Contains(testStep.Position))
+        {
+            var testGuard = new Guard(mapData.Guard.Steps);
+
+            testGuard.ChangeDirection();
+
+            var testMapData = new MapData(
+                mapData.Width, mapData.Height,
+                [.. mapData.Obstructions, testStep.Position],
+                testGuard);
+            var found = DoWork(testMapData, guard.Steps.Count - 1,
+                debug, debugPause, debugData, trace);
+
+            if (found != null) mapData.InterferencePoints.Add(testStep.Position);
+        }
+
+        mapData.RecordStep(testStep, true);
+    }
+
+    if (firstPass) mapData.Back();
+
+    return firstPass ? mapData : null;
+}
+
+static void ShowResults(MapData mapData, bool debug)
+{
+    PrintMap(mapData, secondPassOffset: -1, full: true, debug: true, debugPause: debug, trace: false);
+
+    if (!debug)
+    {
+        Console.WriteLine("--------- Final Render ---------");
+        Console.WriteLine("Press Any Key to display results.");
+        Console.ReadKey();
+    }
+
+    Console.Clear();
+    Console.WriteLine($"Total Steps: {mapData.AllPositions.Count}");
+    Console.WriteLine($"Distinct Steps: {mapData.DistinctSteps.Count}");
+    Console.WriteLine($"Repeated Steps: {mapData.AllSteps.Count - mapData.DistinctSteps.Count}");
+    Console.WriteLine($"Distinct Positions: {mapData.DistinctPositions.Count}");
+    Console.WriteLine($"Repeated Positions: {mapData.AllPositions.Count - mapData.DistinctPositions.Count}");
+    Console.WriteLine("-----------------------------------------------------------------");
+    Console.WriteLine($"Possible Obstruction Positions (that would create loops): {mapData.InterferencePoints.Count}");
+    Console.WriteLine("-----------------------------------------------------------------");
+
+    while (!ContinueRequested) Thread.Sleep(20);
+
+    Console.WriteLine(mapData.AllSteps
+        .Aggregate(
+            new StringBuilder(),
+            (sb, step) => sb.AppendLine($@"{(sb.Length > 0 ? " -> " : "")}({step.Position.X}, {step.Position.Y}) {step.Direction.ToString()}"))
+        .ToString());
+}
+
+const bool debug = true;
+const bool debugData = true;
+const bool debugPause = false;
+const bool trace = true;
+
+ShowResults(
+    DoWork(debug: debug, debugPause: debugPause, debugData: debugData, trace: trace)
+        ?? throw new Exception("Malformed input."),
+    debug);
 
 internal enum MapDirection
 {
@@ -611,10 +814,6 @@ internal readonly record struct MapData
         Guard.Back();
     }
 
-    internal readonly bool IsPositionValid(Point position)
-        => position.X >= 0 && position.Y >= 0 &&
-        position.X < Width && position.Y < Height;
-
     internal readonly void RecordStep(Step step, bool setCurrent)
     {
         if (setCurrent) Guard.Move(step);
@@ -658,10 +857,6 @@ internal static class Extensions
     internal static bool IsHorizontal(this MapDirection direction) => (int)direction % 2 == 1;
 
     internal static bool IsVertical(this MapDirection direction) => (int)direction % 2 == 0;
-
-    internal static Step AboutFace(this Step step) => step.ChangeDirection().ChangeDirection();
-
-    internal static Step Rewind(this Step step) => AboutFace(AboutFace(step).Next);
 }
 
 internal static partial class Program
@@ -669,13 +864,8 @@ internal static partial class Program
     private const char BorderIcon = '*';
     private const char ObstructionIcon = '#';
     private const char PossibleObstructionIcon = 'O';
-    private const char GuardUpIcon = '^';
-    private const char GuardRightIcon = '>';
-    private const char GuardDownIcon = 'v';
-    private const char GuardLeftIcon = '<';
 
-    private static readonly char[] GuardIcons
-        = [GuardUpIcon, GuardRightIcon, GuardDownIcon, GuardLeftIcon];
+    private static readonly char[] GuardIcons = ['^', '>', 'v', '<'];
     private static readonly char[] VisitedLocationIcons = ['|', '-', '+'];
 
     private static ConsoleColor DefaultBgColor { get; set; }
@@ -743,164 +933,5 @@ internal static partial class Program
     private static bool PauseRequested => OperationRequested(PauseKey);
 
     private static bool ContinueRequested => OperationRequested(ContinueKey);
-
-    private static void PrintMap(
-        MapData data, int secondPassOffset = -1, bool full = true,
-        bool debug = false, bool debugPause = false, bool trace = false)
-    {
-        if (!trace && secondPassOffset > -1) return;
-        if (!full && data.AllSteps[^1].IsVertical) return;
-        if (!full && trace &&
-            data.AllSteps.Count > 1 &&
-            data.AllSteps[^1].Direction != data.AllSteps[^2].Direction) Console.Clear();
-
-        const int PortionSize = 25;
-
-        Console.CursorVisible = false;
-        DefaultBgColor = Console.ForegroundColor;
-
-        var origFgColor = DefaultBgColor;
-        var origBgColor = Console.BackgroundColor;
-        var guard = data.Guard;
-        var minRow = full ? 0 : Math.Max(0, guard.CurrentStep!.Value.Position.Y - PortionSize);
-        var maxRow = full
-            ? data.Height - 1
-            : Math.Min(data.Height - 1, PortionSize + Math.Max(PortionSize, guard.CurrentStep!.Value.Position.Y));
-        var printInstructions = new List<PrintInstruction>(
-            data.Obstructions
-                .Where(o => o.Y >= minRow && o.Y <= maxRow)
-                .Select(o => new PrintInstruction(
-                    o, ObstructionIcon, ObstructionFgColor, ObstructionBgColor)));
-        var isSecondPass = false;
-        Step currStep;
-
-        for (var i = 0; i < guard.Steps.Count; i++)
-        {
-            isSecondPass = secondPassOffset > -1 && i >= secondPassOffset;
-
-            currStep = guard.Steps[i];
-
-            var isStart = currStep == guard.StartingStep;
-
-            if (data.InterferencePoints.Contains(currStep.Position))
-            {
-                printInstructions.Add(new(currStep.Position,
-                    PossibleObstructionIcon, PossibleObstructionFgColor,
-                    isStart
-                        ? (isSecondPass ? SecondPassStartBgColor : StartBgColor)
-                        : (isSecondPass ? PossibleObstructionSecondPassBgColor : PossibleObstructionBgColor)));
-                continue;
-            }
-
-            var repeated = guard.Steps.Take(i).Where(s => s.Position == currStep.Position).ToList();
-            var currDirectionIndex = (int)currStep.Direction % 2;
-
-            if (repeated.Count == 0)
-            {
-                printInstructions.Add(new(currStep.Position,
-                    VisitedLocationIcons[currDirectionIndex],
-                    isSecondPass ? VisitedLocationSecondPassFgColor : VisitedLocationFgColor,
-                    isStart
-                        ? (isSecondPass ? SecondPassStartBgColor : StartBgColor)
-                        : (isSecondPass ? VisitedLocationSecondPassBgColor : VisitedLocationBgColor)));
-                continue;
-            }
-
-            if (!debug && !isSecondPass)
-                printInstructions.RemoveAll(pi => pi.Position == currStep.Position);
-
-            printInstructions.Add(new(currStep.Position,
-                VisitedLocationIcons[repeated.Any(
-                    r => (int)r.Direction % 2 != currDirectionIndex) ? 2 : currDirectionIndex],
-                isStart
-                    ? (isSecondPass ? SecondPassStartFgColor : StartFgColor)
-                    : (isSecondPass ? VisitedLocationSecondPassFgColor : VisitedLocationFgColor),
-                isStart
-                    ? (isSecondPass ? SecondPassStartBgColor : StartBgColor)
-                    : (isSecondPass ? RepeatedLocationSecondPassBgColor : RepeatedLocationBgColor)));
-        }
-
-        currStep = guard.CurrentStep!.Value;
-
-        var inBounds =
-            currStep.Position.X >= 0 && currStep.Position.X < data.Width &&
-            currStep.Position.Y >= 0 && currStep.Position.Y < data.Height;
-        ConsoleColor guardFore, guardBack;
-
-        if (data.InterferencePoints.Contains(currStep.Position))
-        {
-            guardFore = inBounds
-                ? (isSecondPass ? GuardSecondPassFgColor : GuardFgColor)
-                : (isSecondPass ? GuardSecondPassFgColorCompleted : GuardFgColorCompleted);
-            guardBack = isSecondPass ? PossibleObstructionSecondPassBgColor : PossibleObstructionBgColor;
-        }
-        else if (!inBounds)
-        {
-            currStep = currStep.Rewind();
-
-            var rewoundToPossibleObstructionPosition = data.InterferencePoints.Contains(currStep.Position);
-
-            guardFore = isSecondPass
-                ? (rewoundToPossibleObstructionPosition ? GuardObstructionSecondPassFgColorCompleted : GuardSecondPassFgColorCompleted)
-                : (rewoundToPossibleObstructionPosition ? GuardObstructionBgColorCompleted : GuardFgColorCompleted);
-            guardBack = isSecondPass
-                ? (rewoundToPossibleObstructionPosition ? GuardObstructionSecondPassBgColorCompleted : GuardSecondPassBgColorCompleted)
-                : (rewoundToPossibleObstructionPosition ? GuardObstructionBgColorCompleted : GuardBgColorCompleted);
-        }
-        else
-        {
-            guardFore = isSecondPass ? GuardSecondPassFgColor : GuardFgColor;
-            guardBack = isSecondPass ? GuardSecondPassBgColor : GuardBgColor;
-        }
-
-        if (!debug && !isSecondPass)
-            printInstructions.RemoveAll(pi => pi.Position == currStep.Position);
-
-        printInstructions.Add(new(
-            currStep.Position, GuardIcons[(int)currStep.Direction], guardFore, guardBack));
-
-        for (var row = -1; row < data.Height + 1; row++)
-        {
-            var rowShouldPrint = row == -1 || row == data.Height;
-
-            for (var col = -1; col < data.Width + 1; col++)
-            {
-                if (!rowShouldPrint && col > -1 && col < data.Width) continue;
-
-                printInstructions.Add(new(new(row, col), BorderIcon,
-                    isSecondPass ? BorderSecondPassFgColor : BorderFgColor,
-                    isSecondPass ? BorderSecondPassBgColor : BorderBgColor));
-            }
-        }
-
-        // TODO: Double buffer
-        var orderedInstructions = printInstructions
-            .OrderBy(pi => pi.Position.Y)
-            .ThenBy(pi => pi.Position.X)
-            .SkipWhile(pi => pi.Position.Y < minRow - 1)
-            .TakeWhile(pi => pi.Position.Y <= maxRow + 1)
-            .ToList();
-
-        if (full ||
-            (data.Height > PortionSize * 2 &&
-             guard.PreviousStep.HasValue &&
-             guard.PreviousStep.Value.Position.Y !=
-                guard.CurrentStep.Value.Position.Y)) Console.Clear();
-
-        foreach (var instruction in orderedInstructions)
-        {
-            Console.BackgroundColor = instruction.BackColor;
-            Console.ForegroundColor = instruction.ForeColor;
-            Console.CursorLeft = instruction.Position.X + 1;
-            Console.CursorTop = instruction.Position.Y - minRow + 1;
-            Console.Write(instruction.Value);
-        }
-
-        Console.BackgroundColor = origBgColor;
-        Console.ForegroundColor = origFgColor;
-        Console.CursorVisible = true;
-
-        if (debug && (PauseRequested || debugPause))
-            while (!ContinueRequested) Thread.Sleep(20);
-    }
 }
+*/
