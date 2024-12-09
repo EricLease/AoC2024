@@ -1,6 +1,4 @@
-﻿using System.ComponentModel;
-
-/*          
+﻿/*          
  Day 7:
     
     Ex. Input:
