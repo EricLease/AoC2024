@@ -1,6 +1,6 @@
-﻿// Expect 1930
-using Utilities;
+﻿using Utilities;
 
+// Expect 1206
 const string _testInput =
     """
     RRRRIICCFF
@@ -15,7 +15,7 @@ const string _testInput =
     MMMISSJEEE
     """;
 
-// Solution: 1421958
+// Solved: 885394
 const string _puzzleInput =
     """
     VVVVVVVVVVVCCCCLLLLLLLLLLLLLLLLLSSSSFFFFFFFFFFFFHHHHHHHHHHHHLLLLLLLLLLLLMLPPPPPPPZZZZZGGGGGGNNNXXXXXXXFFFLLFVVCCCDDCCCYYYYYYYYYYYYYYYYYYCCCC
@@ -180,6 +180,42 @@ region area = size of region (# of cells)
 region price = region perimeter * region area
 
 problem answer = sum(region prices)
+
+    Part 2
+
+Calculate region price as # sides * area
+
+    Algorithm:
+
+        Calculate number of region sides as sum of each cell's contribution
+        Side contribution:
+            
+            Simple cases:
+
+            cell perimeter : 4 :: cell sides : 4    _
+                                                   |_|
+                                                    
+            cell perimeter : 0 :: cell sides : 0   ___
+                                                  |   |
+                                                  | x |
+                                                  |___|
+
+            corners count as 1:
+                1. standard corners: 
+                    - iterate through neighbors
+                    - for ith neighbor, check if neighbor[i] and neighbor[i+1] values both differ (both perim)
+                        - true: this is a standard corner:          v
+                                                                 ____ 
+                                                                    >|
+                2. inverted corner:
+                    - while iterating through corners, if neighbor[i] differs (perim) but neighbor[i+1] does not differ
+                        - check diagonal (right turn relative to current neighbor) 
+                            - if neighbor[i+1] has neighbors, and neighbor[i+1]'s neighbor[i] value matches current cell value -> inverted corner
+                                                           ___
+                                                              |
+                                                             >|___
+                                                               ^  |
+
  */
 
 const bool _debug = false;
@@ -189,24 +225,32 @@ var map = new Map(lines);
 var mapOffset = 0;
 var currCell = map.GetCellByOffset(mapOffset);
 var totalPrice = 0L;
+var regions = new List<Region>();
 
 while (mapOffset < map.Size)
 {
     while (currCell.Seen && ++mapOffset < map.Size)
     {
-        Console.WriteLine($"Skipping offset {mapOffset - 1}, already seen.");
+        if (_debug) Console.WriteLine($"Skipping offset {mapOffset - 1}, already seen.");
         currCell = map.GetCellByOffset(mapOffset);
     }
 
     if (mapOffset < map.Size)
     {
-        Console.WriteLine($"Processing cell at {mapOffset} [{currCell.Value}].");
-     
+        if (_debug) Console.WriteLine($"Processing cell at {mapOffset} [{currCell.Value}].");
+
         var region = currCell.Region;
-        
+
         totalPrice += region.Price;
+        regions.Add(region);
         map.MarkAsSeen(region);
         mapOffset++;
+
+        if (_debug)
+        {
+            Console.WriteLine("Press any key to continue.");
+            Console.ReadKey();
+        }
     }
 
     if (mapOffset >= map.Size) break;
@@ -214,6 +258,47 @@ while (mapOffset < map.Size)
     currCell = map.GetCellByOffset(mapOffset);
 }
 
+Console.BackgroundColor = ConsoleColor.Black;
+Console.ForegroundColor = ConsoleColor.White;
+Console.Clear();
+
+var i = 0;
+var colors = new List<List<ConsoleColor>>
+{ 
+    new() 
+    {
+        ConsoleColor.White,
+        ConsoleColor.Magenta,
+        ConsoleColor.DarkMagenta,
+        ConsoleColor.Red,
+        ConsoleColor.DarkRed,
+    },
+    new()
+    {
+        ConsoleColor.White,
+        ConsoleColor.Cyan,
+        ConsoleColor.DarkCyan,
+        ConsoleColor.Blue,
+        ConsoleColor.DarkBlue,
+    },
+    new() 
+    {
+        ConsoleColor.White,
+        ConsoleColor.Yellow,
+        ConsoleColor.DarkYellow,
+        ConsoleColor.Green,
+        ConsoleColor.DarkGreen,        
+    }
+};
+
+foreach (var region in regions)
+{
+    var palette = colors[i++ % colors.Count];
+    region.Print(map.Width, palette, ConsoleColor.White);
+}
+
+Console.BackgroundColor = ConsoleColor.Black;
+Console.ForegroundColor = ConsoleColor.White;
 Console.WriteLine($"Total Price: {totalPrice}");
 
 internal readonly record struct Map
@@ -243,29 +328,11 @@ internal readonly record struct Map
         {
             var cell = Data[Column(mapOffset), Row(mapOffset)];
 
-            if (mapOffset >= Width) // Not first row
-            {
-                // Add UP
-                AddNeighbor(cell, mapOffset - Width);
-            }
-
-            if (mapOffset < Size - Width) // Not last row
-            {
-                // Add DOWN
-                AddNeighbor(cell, mapOffset + Width);
-            }
-
-            if (mapOffset % Width > 0)
-            {
-                // Add LEFT
-                AddNeighbor(cell, mapOffset - 1);
-            }
-
-            if (mapOffset % Width < Width - 1)
-            {
-                // Add RIGHT
-                AddNeighbor(cell, mapOffset + 1);
-            }
+            // Add [and iterate] in this order: ^ > v <
+            AddNeighborOrDummy(cell, mapOffset - Width, mapOffset >= Width); // Up, Not first row
+            AddNeighborOrDummy(cell, mapOffset + 1, mapOffset % Width < Width - 1); // Right, not last column
+            AddNeighborOrDummy(cell, mapOffset + Width, mapOffset < Size - Width); // Down, not last row
+            AddNeighborOrDummy(cell, mapOffset - 1, mapOffset % Width > 0); // Left, not first column
         }
     }
 
@@ -293,6 +360,17 @@ internal readonly record struct Map
         {
             Data[Column(cell.Offset), Row(cell.Offset)].Seen = true;
         }
+    }
+
+    private void AddNeighborOrDummy(Cell cell, int nOffset, bool condition)
+    {
+        if (condition)
+        {
+            AddNeighbor(cell, nOffset);
+            return;
+        }
+
+        cell.AddNeighbor(offset: nOffset);
     }
 
     private void AddNeighbor(Cell cell, int offset)
@@ -327,6 +405,35 @@ internal record struct Cell(char Value, int Offset)
         }
     }
 
+    private int _sideCount = -1;
+    internal int SideCount
+    {
+        get
+        {
+            if (_sideCount > -1) return _sideCount;
+
+            ValidateNeighbors();
+
+            var thisVal = Value;
+
+            _sideCount = 0;
+
+            for (var i = 0; i < _neighbors.Count; i++)
+            {
+                var n = _neighbors.ElementAt(i);
+                var nextN = _neighbors.ElementAt((i + 1) % 4);
+                var diag = nextN.Value == thisVal
+                        ? nextN.Neighbors.ElementAt(i).Value
+                        : -1;
+
+                if (thisVal != n.Value &&
+                    (thisVal != nextN.Value || thisVal == diag)) _sideCount++;
+            }
+
+            return _sideCount;
+        }
+    }
+
     internal readonly Region Region
     {
         get
@@ -337,15 +444,16 @@ internal record struct Cell(char Value, int Offset)
 
             Walk(this, Value, region);
 
-            return new(region);
+            return new(region.OrderBy(c => c.Offset));
         }
     }
 
-    internal readonly void AddNeighbor(Cell neighbor) => _neighbors.Add(neighbor);
+    internal readonly void AddNeighbor(Cell? neighbor = null, int offset = -1)
+        => _neighbors.Add(neighbor ?? new Cell('!', offset));
 
     private readonly void ValidateNeighbors()
     {
-        if (_neighbors.Count < 2 || _neighbors.Count > 4)
+        if (_neighbors.Count != 4)
             throw new Exception($"Invalid number of neighbors ({_neighbors.Count})");
     }
 
@@ -366,21 +474,21 @@ internal readonly record struct Region(IEnumerable<Cell> Cells)
 {
     internal readonly int Perimeter => Cells.Sum(c => c.Perimeter);
 
+    internal readonly int SideCount => Cells.Sum(c => c.SideCount);
+
     internal readonly int Area => Cells.Distinct().Count();
 
-    internal readonly long Price //=> Perimeter * Area;
+    internal readonly long Price => SideCount * Area;
+
+    internal readonly void Print(int width, List<ConsoleColor> back, ConsoleColor fore)
     {
-        get
+        foreach (var cell in Cells)
         {
-            var p = Perimeter;
-            var a = Area;
-            var price = p * a;
-
-            Console.WriteLine($"\tPerimeter: {p}");
-            Console.WriteLine($"\tArea: {a}");
-            Console.WriteLine($"\tPrice: {price}");
-
-            return price;
+            Console.CursorLeft = cell.Offset % width;
+            Console.CursorTop = cell.Offset / width;
+            Console.ForegroundColor = cell.SideCount == 0 ? back[4] : fore;
+            Console.BackgroundColor = back[cell.SideCount];
+            Console.Write(cell.Value);
         }
     }
 }
