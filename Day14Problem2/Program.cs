@@ -1,129 +1,7 @@
 ﻿using System.Drawing;
 using Utilities;
 
-/*
-1234567890123456789012345678901234567890123456789x
-                                                x1
-                                               xx2
-                                              xxx3
-                                             xxxx4
-                                            xxxxx5
-                                           xxxxxx6
-                                          xxxxxxx7
-                                         xxxxxxxx8
-                                        x        9
-                                       x         0
-                                      x          1
-                                     x           2
-                                    x            3
-                                   x             4
-                                  x              5
-                                 x               6
-                                x                7
-                               x                 8
-                              x                  9
-                             x                   0
-                            x                    1
-                           x                     2
-                          x                      3
-                         x                       4
-                        x                        5
-                       x                         6
-                      x                          7
-                     x                           8
-                    x                            9
-                   x                             0
-                  x                              1
-                 x                               2
-                x                                3
-               x                                 4
-              x                                  5
-             x                                   6
-            x                                    7
-           x                                     8
-          x                                      9
-         x                                       0
-        x                                        1
-       x                                         2
-      x                                          3
-     xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx4
-    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx5
-   xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx6
-  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx7
- xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx8
-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx9
-                                                 0
-                                                x1
-                                               xx2
-                                              xxx3
-                                             xxxx4
-                                            xxxxx5
-                                           xxxxxx6
-                                          xxxxxxx7
-                                         xxxxxxxx8
-                                        x        9
-                                       x         0
-                                      x          1
-                                     x           2
-                                    x            3
-                                   x             4
-                                  x              5
-                                 x               6
-                                x                7
-                               x                 8
-                              x                  9
-                             x                   0
-                            x                    1
-                           x                     2
-                          x                      3
-                         x                       4
-                        x                        5
-                       x                         6
-                      x                          7
-                     x                           8
-                    x                            9
-                   x                             0
-                  x                              1
-                 x                               2
-                x                                3
-               x                                 4
-              x                                  5
-             x                                   6
-            x                                    7
-           x                                     8
-          x                                      9
-         x                                       0
-        x                                        1
-       x                                         2
-      x                                          3
-     xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx4xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx5xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-   xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx6xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx7xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
- xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx8xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx9xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-                                                x0x
-                                                x1x
-                                                x2x
-*/
-
 const bool _debug = false;
-// Expect: ???
-const string _debugInput =
-    """
-    p=0,4 v=3,-3
-    p=6,3 v=-1,-3
-    p=10,3 v=-1,2
-    p=2,0 v=2,-1
-    p=0,0 v=1,3
-    p=3,0 v=-2,-2
-    p=7,6 v=-1,-3
-    p=3,0 v=-1,-2
-    p=9,3 v=2,3
-    p=7,3 v=-1,2
-    p=2,4 v=2,-3
-    p=9,5 v=-3,-3
-    """;
 // Solved: 8149
 const string _puzzleInput =
     """
@@ -628,7 +506,6 @@ const string _puzzleInput =
     p=21,16 v=-74,-40
     p=70,53 v=66,53
     """;
-const string _input = _debug ? _debugInput : _puzzleInput;
 
 /*
  --- Day 14: Restroom Redoubt ---
@@ -748,9 +625,13 @@ What will the safety factor be after exactly 100 seconds have elapsed?
 
 --- Part Two ---
 In how many seconds does the image become a xmas tree?
+   x
+  xxx
+ xxxxx
+xxxxxxx
  */
 
-Console.WriteLine($"Total: {Solve(Parse(_input.GetLines()))}");
+Console.WriteLine($"Total: {Solve(Parse(_puzzleInput.GetLines()))}");
 
 static long Solve(List<Robot> robots)
 {
@@ -765,11 +646,11 @@ static long Solve(List<Robot> robots)
     var full = false;
     var treeTemplate = new string[]
     {
-        "....#....",
-        "...###...",
-        "..#####..",
-        ".#######.",
-        "#########"
+        "    x    ",
+        "   xxx   ",
+        "  xxxxx  ",
+        " xxxxxxx ",
+        "xxxxxxxxx"
     };
     var templateHeight = treeTemplate.Length;
     var templateWidth = treeTemplate[0].Length;
@@ -812,7 +693,7 @@ static long Solve(List<Robot> robots)
                         {
                             for (var tx = 0; tx < templateWidth; tx++)
                             {
-                                if (treeTemplate[ty][tx] == '#' && !robots.Any(r => r.Position.X == x + tx && r.Position.Y == y + ty))
+                                if (treeTemplate[ty][tx] == 'x' && !robots.Any(r => r.Position.X == x + tx && r.Position.Y == y + ty))
                                 { 
                                     match = false;
                                     break;
@@ -858,7 +739,7 @@ static void Print(List<Robot> newRobots, List<Robot> oldRobots, int width, int h
     //var absT = Math.Abs(t);
     //var sign = Math.Sign(t) < 0 ? "-" : "";
 
-    //height = full ? height : 50;
+    height = full ? height : 50;
     //Console.BackgroundColor = ConsoleColor.Black;
     //Console.SetCursorPosition(0, height);
     //Console.WriteLine(string.Format("Time: {0}{1:00}:{2:00}:{3:00}:{4:00} {5}\n",
